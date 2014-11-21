@@ -173,7 +173,16 @@ function adapter(uri, opts){
     data.smembers(prefix + '#' + room, fn);
   };
 
-
+  /**
+   * Get all rooms the clien is in
+   * 
+   * @param {String} client id
+   * @api public
+   */
+  Redis.prototype.roomClients = function(id, fn) {
+    data.smembers(prefix + '#' + id, fn);  
+  };
+  
   /**
    * Broadcasts a packet.
    *
