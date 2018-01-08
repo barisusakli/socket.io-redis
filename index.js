@@ -112,9 +112,6 @@ function adapter(uri, opts) {
     });
 
     this._publish = function(channel, payload) {
-      // loopback
-      self.onmessage(channel, payload);
-      self.onrequest(channel, payload);
       pub.query('SELECT pg_notify(\'socketio\', $1::TEXT)', [JSON.stringify([channel, payload])]);
     };
 
