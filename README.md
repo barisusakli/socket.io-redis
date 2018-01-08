@@ -3,7 +3,7 @@
 **Derived from socket.io-redis.**
 
 [![Build Status](https://travis-ci.org/BenLubar/socket.io-adapter-postgres.svg?branch=master)](https://travis-ci.org/BenLubar/socket.io-adapter-postgres)
-[![NPM version](https://badge.fury.io/js/socket.io-redis.svg)](http://badge.fury.io/js/socket.io-adapter-postgres)
+[![NPM version](https://badge.fury.io/js/socket.io-adapter-postgres.svg)](http://badge.fury.io/js/socket.io-adapter-postgres)
 
 ## How to use
 
