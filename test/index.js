@@ -5,7 +5,7 @@ var ioc = require('socket.io-client');
 var expect = require('expect.js');
 var adapter = require('../');
 
-var ioredis = require('ioredis').createClient;
+var pgNative = require('pg').native;
 
 var namespace1, namespace2, namespace3;
 var client1, client2, client3;
@@ -13,14 +13,14 @@ var socket1, socket2, socket3;
 
 [
   {
-    name: 'socket.io-redis'
+    name: 'socket.io-adapter-postgres'
   },
   {
-    name: 'socket.io-redis with ioredis',
+    name: 'socket.io-adapter-postgres with pg-native',
     options: function () {
       return {
-        pubClient: ioredis(),
-        subClient: ioredis()
+        pubClient: new pgNative.Pool(),
+        subClient: new pgNative.Client()
       }
     }
   },
@@ -171,26 +171,6 @@ var socket1, socket2, socket3;
       });
     });
 
-    it('ignores messages from unknown channels', function(done){
-      namespace1.adapter.subClient.psubscribe('f?o', function () {
-        namespace3.adapter.pubClient.publish('foo', 'bar');
-      });
-
-      namespace1.adapter.subClient.on('pmessageBuffer', function () {
-        setTimeout(done, 50);
-      });
-    });
-
-    it('ignores messages from unknown channels (2)', function(done){
-      namespace1.adapter.subClient.subscribe('woot', function () {
-        namespace3.adapter.pubClient.publish('woot', 'toow');
-      });
-
-      namespace1.adapter.subClient.on('messageBuffer', function () {
-        setTimeout(done, 50);
-      });
-    });
-
     describe('rooms', function () {
       it('returns rooms of a given client', function(done){
         socket1.join('woot1', function () {
@@ -335,8 +315,17 @@ function cleanup(done){
   namespace1.adapter.on('error', noop);
   namespace2.adapter.on('error', noop);
   namespace3.adapter.on('error', noop);
-  namespace1.adapter.subClient.quit();
-  namespace2.adapter.subClient.quit();
-  namespace3.adapter.subClient.quit();
-  done();
+  var waiting = 6;
+  function ended() {
+    waiting -= 1;
+    if (!waiting) {
+      done();
+    }
+  }
+  namespace1.adapter.pubClient.end(ended);
+  namespace2.adapter.pubClient.end(ended);
+  namespace3.adapter.pubClient.end(ended);
+  namespace1.adapter.subClient.end(ended);
+  namespace2.adapter.subClient.end(ended);
+  namespace3.adapter.subClient.end(ended);
 }

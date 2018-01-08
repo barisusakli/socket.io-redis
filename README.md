@@ -1,17 +1,19 @@
-# socket.io-redis
+# socket.io-adapter-postgres
 
-[![Build Status](https://travis-ci.org/socketio/socket.io-redis.svg?branch=master)](https://travis-ci.org/socketio/socket.io-redis)
-[![NPM version](https://badge.fury.io/js/socket.io-redis.svg)](http://badge.fury.io/js/socket.io-redis)
+**Derived from socket.io-redis.**
+
+[![Build Status](https://travis-ci.org/BenLubar/socket.io-adapter-postgres.svg?branch=master)](https://travis-ci.org/BenLubar/socket.io-adapter-postgres)
+[![NPM version](https://badge.fury.io/js/socket.io-redis.svg)](http://badge.fury.io/js/socket.io-adapter-postgres)
 
 ## How to use
 
 ```js
 const io = require('socket.io')(3000);
-const redis = require('socket.io-redis');
-io.adapter(redis({ host: 'localhost', port: 6379 }));
+const postgres = require('socket.io-adapter-postgres');
+io.adapter(postgres({ host: 'localhost', port: 5432 }));
 ```
 
-By running socket.io with the `socket.io-redis` adapter you can run
+By running socket.io with the `socket.io-adapter-postgres` adapter you can run
 multiple socket.io instances in different processes or servers that can
 all broadcast and emit events to and from each other.
 
@@ -22,7 +24,7 @@ process, you should use [socket.io-emitter](https://github.com/socketio/socket.i
 
 ### adapter(uri[, opts])
 
-`uri` is a string like `localhost:6379` where your redis server
+`uri` is a string like `localhost:5432` where your PostgreSQL server
 is located. For a list of options see below.
 
 ### adapter(opts)
@@ -30,19 +32,17 @@ is located. For a list of options see below.
 The following options are allowed:
 
 - `key`: the name of the key to pub/sub events on as prefix (`socket.io`)
-- `host`: host to connect to redis on (`localhost`)
-- `port`: port to connect to redis on (`6379`)
-- `pubClient`: optional, the redis client to publish events on
-- `subClient`: optional, the redis client to subscribe to events on
+- `pubClient`: optional, the pg.Pool to publish events on
+- `subClient`: optional, the pg.Client to subscribe to events on
 - `requestsTimeout`: optional, after this timeout the adapter will stop waiting from responses to request (`1000ms`)
 
 If you decide to supply `pubClient` and `subClient`, make sure you use
-[node_redis](https://github.com/mranney/node_redis) as a client or one
+[pg](https://github.com/brianc/node-postgres) as a client or one
 with an equivalent API.
 
-### RedisAdapter
+### PostgresAdapter
 
-The redis adapter instances expose the following properties
+The PostgreSQL adapter instances expose the following properties
 that a regular `Adapter` does not
 
 - `uid`
@@ -51,7 +51,7 @@ that a regular `Adapter` does not
 - `subClient`
 - `requestsTimeout`
 
-### RedisAdapter#clients(rooms:Array, fn:Function)
+### PostgresAdapter#clients(rooms:Array, fn:Function)
 
 Returns the list of client IDs connected to `rooms` across all nodes. See [Namespace#clients(fn:Function)](https://github.com/socketio/socket.io#namespaceclientsfnfunction)
 
@@ -71,7 +71,7 @@ io.in('room3').clients((err, clients) => {
 });
 ```
 
-### RedisAdapter#clientRooms(id:String, fn:Function)
+### PostgresAdapter#clientRooms(id:String, fn:Function)
 
 Returns the list of rooms the client with the given ID has joined (even on another node).
 
@@ -82,7 +82,7 @@ io.of('/').adapter.clientRooms('<my-id>', (err, rooms) => {
 });
 ```
 
-### RedisAdapter#allRooms(fn:Function)
+### PostgresAdapter#allRooms(fn:Function)
 
 Returns the list of all rooms.
 
@@ -92,7 +92,7 @@ io.of('/').adapter.allRooms((err, rooms) => {
 });
 ```
 
-### RedisAdapter#remoteJoin(id:String, room:String, fn:Function)
+### PostgresAdapter#remoteJoin(id:String, room:String, fn:Function)
 
 Makes the socket with the given id join the room. The callback will be called once the socket has joined the room, or with an `err` argument if the socket was not found.
 
@@ -103,7 +103,7 @@ io.of('/').adapter.remoteJoin('<my-id>', 'room1', (err) => {
 });
 ```
 
-### RedisAdapter#remoteLeave(id:String, room:String, fn:Function)
+### PostgresAdapter#remoteLeave(id:String, room:String, fn:Function)
 
 Makes the socket with the given id leave the room. The callback will be called once the socket has left the room, or with an `err` argument if the socket was not found.
 
@@ -114,7 +114,7 @@ io.of('/').adapter.remoteLeave('<my-id>', 'room1', (err) => {
 });
 ```
 
-### RedisAdapter#remoteDisconnect(id:String, close:Boolean, fn:Function)
+### PostgresAdapter#remoteDisconnect(id:String, close:Boolean, fn:Function)
 
 Makes the socket with the given id to get disconnected. If `close` is set to true, it also closes the underlying socket. The callback will be called once the socket was disconnected, or with an `err` argument if the socket was not found.
 
@@ -125,7 +125,7 @@ io.of('/').adapter.remoteDisconnect('<my-id>', true, (err) => {
 });
 ```
 
-### RedisAdapter#customRequest(data:Object, fn:Function)
+### PostgresAdapter#customRequest(data:Object, fn:Function)
 
 Sends a request to every nodes, that will respond through the `customHook` method.
 
@@ -144,12 +144,13 @@ io.of('/').adapter.customRequest('john', function(err, replies){
 ## Client error handling
 
 Access the `pubClient` and `subClient` properties of the
-Redis Adapter instance to subscribe to its `error` event:
+PostgreSQL Adapter instance to subscribe to its `error` event:
 
 ```js
-const redis = require('socket.io-redis');
-const adapter = redis('localhost:6379');
+const postgres = require('socket.io-adapter-postgres');
+const adapter = postgres('localhost:5432');
 adapter.pubClient.on('error', function(){});
+adapter.pubClient.on('connect', function(client){ client.on('error', function(){}); });
 adapter.subClient.on('error', function(){});
 ```
 

@@ -4,10 +4,10 @@
  */
 
 var uid2 = require('uid2');
-var redis = require('redis').createClient;
+var pg = require('pg');
 var msgpack = require('notepack.io');
 var Adapter = require('socket.io-adapter');
-var debug = require('debug')('socket.io-redis');
+var debug = require('debug')('socket.io-adapter-postgres');
 
 /**
  * Module exports.
@@ -30,10 +30,10 @@ var requestTypes = {
 };
 
 /**
- * Returns a redis Adapter class.
+ * Returns a PostgreSQL Adapter class.
  *
  * @param {String} optional, redis uri
- * @return {RedisAdapter} adapter
+ * @return {PostgreSQL} adapter
  * @api public
  */
 
@@ -53,17 +53,13 @@ function adapter(uri, opts) {
   var requestsTimeout = opts.requestsTimeout || 5000;
 
   // init clients if needed
-  function createClient() {
-    if (uri) {
-      // handle uri string
-      return redis(uri, opts);
-    } else {
-      return redis(opts);
-    }
+  if (!pub) {
+    pub = new pg.Pool(uri || opts);
   }
-
-  if (!pub) pub = createClient();
-  if (!sub) sub = createClient();
+  if (!sub) {
+    sub = new pg.Client(uri || opts);
+    sub.connect();
+  }
 
   // this server's key
   var uid = uid2(6);
@@ -75,7 +71,7 @@ function adapter(uri, opts) {
    * @api public
    */
 
-  function Redis(nsp){
+  function PostgreSQL(nsp){
     Adapter.call(this, nsp);
 
     this.uid = uid;
@@ -102,22 +98,39 @@ function adapter(uri, opts) {
 
     var self = this;
 
-    sub.psubscribe(this.channel + '*', function(err){
+    sub.query('SELECT set_config(\'application_name\', $1::TEXT, false)', ['socket.io-' + this.requestChannel], function(err) {
+      if (err) self.emit('error', err);
+    });
+    sub.query('LISTEN socketio', function(err) {
       if (err) self.emit('error', err);
     });
 
-    sub.on('pmessageBuffer', this.onmessage.bind(this));
-
-    sub.subscribe([this.requestChannel, this.responseChannel], function(err){
-      if (err) self.emit('error', err);
+    sub.on('notification', function(msg) {
+      var payload = JSON.parse(msg.payload);
+      self.onmessage(payload[0], payload[1]);
+      self.onrequest(payload[0], payload[1]);
     });
 
-    sub.on('messageBuffer', this.onrequest.bind(this));
+    this._publish = function(channel, payload) {
+      // loopback
+      self.onmessage(channel, payload);
+      self.onrequest(channel, payload);
+      pub.query('SELECT pg_notify(\'socketio\', $1::TEXT)', [JSON.stringify([channel, payload])]);
+    };
+
+    this._numsub = function(channel, callback) {
+      pub.query('SELECT COUNT(*) c FROM pg_stat_activity WHERE application_name = $1::TEXT', ['socket.io-' + channel], function(err, res) {
+        callback(err, res && res.rows && res.rows[0] && res.rows[0].c);
+      });
+    }
 
     function onError(err) {
       self.emit('error', err);
     }
     pub.on('error', onError);
+    pub.on('connect', function(client) {
+      client.on('error', onError);
+    });
     sub.on('error', onError);
   }
 
@@ -125,7 +138,7 @@ function adapter(uri, opts) {
    * Inherits from `Adapter`.
    */
 
-  Redis.prototype.__proto__ = Adapter.prototype;
+  PostgreSQL.prototype.__proto__ = Adapter.prototype;
 
   /**
    * Called with a subscription message
@@ -133,7 +146,7 @@ function adapter(uri, opts) {
    * @api private
    */
 
-  Redis.prototype.onmessage = function(pattern, channel, msg){
+  PostgreSQL.prototype.onmessage = function(channel, msg){
     channel = channel.toString();
 
     if (!this.channelMatches(channel, this.channel)) {
@@ -145,7 +158,7 @@ function adapter(uri, opts) {
       return debug('ignore unknown room %s', room);
     }
 
-    var args = msgpack.decode(msg);
+    var args = msgpack.decode(new Buffer(msg, 'base64'));
     var packet;
 
     if (uid === args.shift()) return debug('ignore same uid');
@@ -171,7 +184,7 @@ function adapter(uri, opts) {
    * @api private
    */
 
-  Redis.prototype.onrequest = function(channel, msg){
+  PostgreSQL.prototype.onrequest = function(channel, msg){
     channel = channel.toString();
 
     if (this.channelMatches(channel, this.responseChannel)) {
@@ -206,7 +219,7 @@ function adapter(uri, opts) {
             clients: clients
           });
 
-          pub.publish(self.responseChannel, response);
+          self._publish(self.responseChannel, response);
         });
         break;
 
@@ -224,7 +237,7 @@ function adapter(uri, opts) {
             rooms: rooms
           });
 
-          pub.publish(self.responseChannel, response);
+          self._publish(self.responseChannel, response);
         });
         break;
 
@@ -235,7 +248,7 @@ function adapter(uri, opts) {
           rooms: Object.keys(this.rooms)
         });
 
-        pub.publish(self.responseChannel, response);
+        self._publish(self.responseChannel, response);
         break;
 
       case requestTypes.remoteJoin:
@@ -248,7 +261,7 @@ function adapter(uri, opts) {
             requestid: request.requestid
           });
 
-          pub.publish(self.responseChannel, response);
+          self._publish(self.responseChannel, response);
         });
         break;
 
@@ -262,7 +275,7 @@ function adapter(uri, opts) {
             requestid: request.requestid
           });
 
-          pub.publish(self.responseChannel, response);
+          self._publish(self.responseChannel, response);
         });
         break;
 
@@ -277,7 +290,7 @@ function adapter(uri, opts) {
           requestid: request.requestid
         });
 
-        pub.publish(self.responseChannel, response);
+        self._publish(self.responseChannel, response);
         break;
 
       case requestTypes.customRequest:
@@ -288,7 +301,7 @@ function adapter(uri, opts) {
             data: data
           });
 
-          pub.publish(self.responseChannel, response);
+          self._publish(self.responseChannel, response);
         });
 
         break;
@@ -304,7 +317,7 @@ function adapter(uri, opts) {
    * @api private
    */
 
-  Redis.prototype.onresponse = function(channel, msg){
+  PostgreSQL.prototype.onresponse = function(channel, msg){
     var self = this;
     var response;
 
@@ -402,16 +415,16 @@ function adapter(uri, opts) {
    * @api public
    */
 
-  Redis.prototype.broadcast = function(packet, opts, remote){
+  PostgreSQL.prototype.broadcast = function(packet, opts, remote){
     packet.nsp = this.nsp.name;
     if (!(remote || (opts && opts.flags && opts.flags.local))) {
-      var msg = msgpack.encode([uid, packet, opts]);
+      var msg = msgpack.encode([uid, packet, opts]).toString('base64');
       var channel = this.channel;
       if (opts.rooms && opts.rooms.length === 1) {
         channel += opts.rooms[0] + '#';
       }
       debug('publishing message to channel %s', channel);
-      pub.publish(channel, msg);
+      this._publish(channel, msg);
     }
     Adapter.prototype.broadcast.call(this, packet, opts);
   };
@@ -424,7 +437,7 @@ function adapter(uri, opts) {
    * @api public
    */
 
-  Redis.prototype.clients = function(rooms, fn){
+  PostgreSQL.prototype.clients = function(rooms, fn){
     if ('function' == typeof rooms){
       fn = rooms;
       rooms = null;
@@ -435,14 +448,13 @@ function adapter(uri, opts) {
     var self = this;
     var requestid = uid2(6);
 
-    pub.send_command('pubsub', ['numsub', self.requestChannel], function(err, numsub){
+    self._numsub(self.requestChannel, function(err, numsub){
       if (err) {
         self.emit('error', err);
         if (fn) fn(err);
         return;
       }
 
-      numsub = parseInt(numsub[1], 10);
       debug('waiting for %d responses to "clients" request', numsub);
 
       var request = JSON.stringify({
@@ -467,7 +479,7 @@ function adapter(uri, opts) {
         timeout: timeout
       };
 
-      pub.publish(self.requestChannel, request);
+      self._publish(self.requestChannel, request);
     });
   };
 
@@ -479,7 +491,7 @@ function adapter(uri, opts) {
    * @api public
    */
 
-  Redis.prototype.clientRooms = function(id, fn){
+  PostgreSQL.prototype.clientRooms = function(id, fn){
 
     var self = this;
     var requestid = uid2(6);
@@ -509,7 +521,7 @@ function adapter(uri, opts) {
       timeout: timeout
     };
 
-    pub.publish(self.requestChannel, request);
+    self._publish(self.requestChannel, request);
   };
 
   /**
@@ -519,19 +531,18 @@ function adapter(uri, opts) {
    * @api public
    */
 
-  Redis.prototype.allRooms = function(fn){
+  PostgreSQL.prototype.allRooms = function(fn){
 
     var self = this;
     var requestid = uid2(6);
 
-    pub.send_command('pubsub', ['numsub', self.requestChannel], function(err, numsub){
+    self._numsub(self.requestChannel, function(err, numsub){
       if (err) {
         self.emit('error', err);
         if (fn) fn(err);
         return;
       }
 
-      numsub = parseInt(numsub[1], 10);
       debug('waiting for %d responses to "allRooms" request', numsub);
 
       var request = JSON.stringify({
@@ -555,7 +566,7 @@ function adapter(uri, opts) {
         timeout: timeout
       };
 
-      pub.publish(self.requestChannel, request);
+      self._publish(self.requestChannel, request);
     });
   };
 
@@ -568,7 +579,7 @@ function adapter(uri, opts) {
    * @api public
    */
 
-  Redis.prototype.remoteJoin = function(id, room, fn){
+  PostgreSQL.prototype.remoteJoin = function(id, room, fn){
 
     var self = this;
     var requestid = uid2(6);
@@ -598,7 +609,7 @@ function adapter(uri, opts) {
       timeout: timeout
     };
 
-    pub.publish(self.requestChannel, request);
+    self._publish(self.requestChannel, request);
   };
 
   /**
@@ -610,7 +621,7 @@ function adapter(uri, opts) {
    * @api public
    */
 
-  Redis.prototype.remoteLeave = function(id, room, fn){
+  PostgreSQL.prototype.remoteLeave = function(id, room, fn){
 
     var self = this;
     var requestid = uid2(6);
@@ -640,7 +651,7 @@ function adapter(uri, opts) {
       timeout: timeout
     };
 
-    pub.publish(self.requestChannel, request);
+    self._publish(self.requestChannel, request);
   };
 
   /**
@@ -650,7 +661,7 @@ function adapter(uri, opts) {
    * @param {Function} callback
    */
 
-  Redis.prototype.remoteDisconnect = function(id, close, fn) {
+  PostgreSQL.prototype.remoteDisconnect = function(id, close, fn) {
     var self = this;
     var requestid = uid2(6);
 
@@ -680,7 +691,7 @@ function adapter(uri, opts) {
       timeout: timeout
     };
 
-    pub.publish(self.requestChannel, request);
+    self._publish(self.requestChannel, request);
   };
 
   /**
@@ -691,7 +702,7 @@ function adapter(uri, opts) {
    * @api public
    */
 
-  Redis.prototype.customRequest = function(data, fn){
+  PostgreSQL.prototype.customRequest = function(data, fn){
     if (typeof data === 'function'){
       fn = data;
       data = null;
@@ -700,14 +711,13 @@ function adapter(uri, opts) {
     var self = this;
     var requestid = uid2(6);
 
-    pub.send_command('pubsub', ['numsub', self.requestChannel], function(err, numsub){
+    self._numsub(self.requestChannel, function(err, numsub){
       if (err) {
         self.emit('error', err);
         if (fn) fn(err);
         return;
       }
 
-      numsub = parseInt(numsub[1], 10);
       debug('waiting for %d responses to "customRequest" request', numsub);
 
       var request = JSON.stringify({
@@ -732,16 +742,16 @@ function adapter(uri, opts) {
         timeout: timeout
       };
 
-      pub.publish(self.requestChannel, request);
+      self._publish(self.requestChannel, request);
     });
   };
 
-  Redis.uid = uid;
-  Redis.pubClient = pub;
-  Redis.subClient = sub;
-  Redis.prefix = prefix;
-  Redis.requestsTimeout = requestsTimeout;
+  PostgreSQL.uid = uid;
+  PostgreSQL.pubClient = pub;
+  PostgreSQL.subClient = sub;
+  PostgreSQL.prefix = prefix;
+  PostgreSQL.requestsTimeout = requestsTimeout;
 
-  return Redis;
+  return PostgreSQL;
 
 }

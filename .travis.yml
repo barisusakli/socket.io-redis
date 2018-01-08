@@ -4,7 +4,7 @@ node_js:
   - "4"
   - "6"
   - "node"
-notifications:
-  irc: "irc.freenode.org#socket.io"
 services:
-  - redis-server
+  - postgresql
+env:
+  - PGUSER=postgres
