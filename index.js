@@ -112,6 +112,9 @@ function adapter(uri, opts) {
     });
 
     this._publish = function(channel, payload) {
+      if (payload.length > 8000) {
+        debug('payload to channel %s too long: %s', channel, payload);
+      }
       pub.query('SELECT pg_notify(\'socketio\', $1::TEXT)', [JSON.stringify([channel, payload])]);
     };
 
