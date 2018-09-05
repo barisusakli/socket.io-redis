@@ -1,11 +1,11 @@
 {
   "name": "socket.io-adapter-postgres",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git@github.com:BenLubar/socket.io-adapter-postgres.git"
+    "url": "https://github.com/BenLubar/socket.io-adapter-postgres.git"
   },
   "files": [
     "index.js"
