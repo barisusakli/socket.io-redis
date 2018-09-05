@@ -7,4 +7,4 @@ node_js:
 services:
   - postgresql
 before_script:
-  - psql -c 'create database travis;' -U postgres
+  - psql -c 'create database if not exists travis;' -U postgres
