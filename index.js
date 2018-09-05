@@ -105,17 +105,48 @@ function adapter(uri, opts) {
       if (err) self.emit('error', err);
     });
 
+    // Object whose keys are (arbitrary) payload ids and whose values are arrays that get built as
+    // chunks come in.
+    var rechunker = {};
+
     sub.on('notification', function(msg) {
       var payload = JSON.parse(msg.payload);
-      self.onmessage(payload[0], payload[1]);
-      self.onrequest(payload[0], payload[1]);
+      if (_.startsWith(payload[1], '_chunk_')) {
+        var header = _.trim(payload[1].substring(0, 50)).split('_');
+        var payloadid = header[2];
+        var chunkIndex = _.parseInt(header[3]);
+        if (!rechunker[payloadid]) {
+          rechunker[payloadid] = [];
+        }
+        var data = payload[1].substring(50);
+        rechunker[payloadid][chunkIndex] = data;
+        var isAllDataIn = _.compact(rechunker[payloadid]).length === _.parseInt(header[4]);
+        if (isAllDataIn) {
+          var rebuiltPayload = rechunker[payloadid].join('');
+          delete rechunker[payloadid];
+          self.onmessage(payload[0], rebuiltPayload);
+          self.onrequest(payload[0], rebuiltPayload);
+        }
+
+      } else {
+        self.onmessage(payload[0], payload[1]);
+        self.onrequest(payload[0], payload[1]);
+      }
     });
 
     this._publish = function(channel, payload) {
       if (payload.length > 8000) {
-        debug('payload to channel %s too long: %s', channel, payload);
+        // https://jsperf.com/string-split-by-length/3
+        var chunks = payload.match(new RegExp('[\\s\\S]{1,5000}', 'g'));
+        var payloadid = uid2(6);
+        for (var i = 0; i < chunks.length; i++) {
+          var header = _.padEnd('_chunk_' + payloadid + '_' + i + '_' + chunks.length, 50);
+          var chunk = header + chunks[i];
+          pub.query('SELECT pg_notify('socketio', $1::TEXT)', [JSON.stringify([channel, chunk])]);
+        }
+      } else {
+        pub.query('SELECT pg_notify('socketio', $1::TEXT)', [JSON.stringify([channel, payload])]);
       }
-      pub.query('SELECT pg_notify(\'socketio\', $1::TEXT)', [JSON.stringify([channel, payload])]);
     };
 
     this._numsub = function(channel, callback) {
