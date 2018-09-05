@@ -142,10 +142,10 @@ function adapter(uri, opts) {
         for (var i = 0; i < chunks.length; i++) {
           var header = _.padEnd('_chunk_' + payloadid + '_' + i + '_' + chunks.length, 50);
           var chunk = header + chunks[i];
-          pub.query('SELECT pg_notify('socketio', $1::TEXT)', [JSON.stringify([channel, chunk])]);
+          pub.query('SELECT pg_notify(\'socketio\', $1::TEXT)', [JSON.stringify([channel, chunk])]);
         }
       } else {
-        pub.query('SELECT pg_notify('socketio', $1::TEXT)', [JSON.stringify([channel, payload])]);
+        pub.query('SELECT pg_notify(\'socketio\', $1::TEXT)', [JSON.stringify([channel, payload])]);
       }
     };
 
