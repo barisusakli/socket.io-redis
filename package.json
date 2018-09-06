@@ -1,11 +1,11 @@
 {
   "name": "socket.io-adapter-postgres",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git@github.com:BenLubar/socket.io-adapter-postgres.git"
+    "url": "https://github.com/BenLubar/socket.io-adapter-postgres.git"
   },
   "files": [
     "index.js"
@@ -14,18 +14,18 @@
     "test": "mocha"
   },
   "dependencies": {
-    "debug": "^3.1.0",
+    "debug": "3.1.0",
     "lodash": "4.17.10",
-    "notepack.io": "^2.1.3",
-    "pg": "^7.4.3",
-    "socket.io-adapter": "~1.1.0",
+    "notepack.io": "2.1.3",
+    "pg": "7.4.3",
+    "socket.io-adapter": "1.1.1",
     "uid2": "0.0.3"
   },
   "devDependencies": {
     "expect.js": "0.3.1",
-    "mocha": "^5.2.0",
-    "pg-native": "^3.0.0",
-    "socket.io": "^2.1.1",
-    "socket.io-client": "^2.1.1"
+    "mocha": "5.2.0",
+    "pg-native": "3.0.0",
+    "socket.io": "2.1.1",
+    "socket.io-client": "2.1.1"
   }
 }

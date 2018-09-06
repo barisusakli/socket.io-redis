@@ -8,6 +8,7 @@ var pg = require('pg');
 var msgpack = require('notepack.io');
 var Adapter = require('socket.io-adapter');
 var debug = require('debug')('socket.io-adapter-postgres');
+var _ = require('lodash');
 
 /**
  * Module exports.
