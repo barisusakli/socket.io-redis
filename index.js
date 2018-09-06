@@ -118,6 +118,13 @@ function adapter(uri, opts) {
         var chunkIndex = _.parseInt(header[3]);
         if (!rechunker[payloadid]) {
           rechunker[payloadid] = [];
+          setTimeout(function () {
+            // no reason why the entire payload should not have arrived within a minute.
+            // prevent memory leak
+            if (rechunker[payloadid]) {
+              delete rechunker[payloadid];
+            }
+          }, 60000);
         }
         var data = payload[1].substring(50);
         rechunker[payloadid][chunkIndex] = data;
