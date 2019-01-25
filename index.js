@@ -197,7 +197,7 @@ function adapter(uri, opts) {
       return debug('ignore unknown room %s', room);
     }
 
-    var args = msgpack.decode(new Buffer(msg, 'base64'));
+    var args = msgpack.decode(Buffer.from(msg, 'base64'));
     var packet;
 
     if (uid === args.shift()) return debug('ignore same uid');
